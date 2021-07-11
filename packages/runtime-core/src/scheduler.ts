@@ -17,27 +17,41 @@ export interface SchedulerJob extends Function, Partial<ReactiveEffect> {
 export type SchedulerCb = Function & { id?: number }
 export type SchedulerCbs = SchedulerCb | SchedulerCb[]
 
-let isFlushing = false
-let isFlushPending = false
+let isFlushing = false // 任务队列是否正在排空
+let isFlushPending = false // 微任务已创建，任务队列等待排空
 
-const queue: SchedulerJob[] = []
-let flushIndex = 0
+const queue: SchedulerJob[] = [] // 主任务队列，用于存储更新任务
+let flushIndex = 0 // 当前正在执行的任务在主任务队列中的索引
 
+/**
+ * 框架运行过程中产生的前置回调任务，比如一些特定的生命周期
+ * 这些回调任务是在主任务队列queue开始排空前批量排空执行的
+ */
 const pendingPreFlushCbs: SchedulerCb[] = []
+// 当前激活的前置回调任务
 let activePreFlushCbs: SchedulerCb[] | null = null
+// 当前前置回调任务在队列中的索引
 let preFlushIndex = 0
 
+/**
+ * 框架运行过程中产生的后置回调任务，比如一些特定的生命周期
+ * 这些回调任务是在主任务队列queue排空后批量排空执行的
+ */
 const pendingPostFlushCbs: SchedulerCb[] = []
+// 当前激活的后置回调任务
 let activePostFlushCbs: SchedulerCb[] | null = null
+// 当前后置回调任务在队列中的索引
 let postFlushIndex = 0
 
+// 微任务创建器
 const resolvedPromise: Promise<any> = Promise.resolve()
+// 当前微任务promise
 let currentFlushPromise: Promise<void> | null = null
 
 let currentPreFlushParentJob: SchedulerJob | null = null
 
-const RECURSION_LIMIT = 100
-type CountMap = Map<SchedulerJob | SchedulerCb, number>
+const RECURSION_LIMIT = 100 // 同一个任务递归执行的上限次数
+type CountMap = Map<SchedulerJob | SchedulerCb, number> // 记录每个任务执行的次数
 
 export function nextTick(
   this: ComponentPublicInstance | void,
@@ -51,6 +65,7 @@ export function nextTick(
 // Use binary-search to find a suitable position in the queue,
 // so that the queue maintains the increasing order of job's id,
 // which can prevent the job from being skipped and also can avoid repeated patching.
+// 二分查找任务在队列中的位置
 function findInsertionIndex(job: SchedulerJob) {
   // the start index should be `flushIndex + 1`
   let start = flushIndex + 1
@@ -73,6 +88,12 @@ export function queueJob(job: SchedulerJob) {
   // if the job is a watch() callback, the search will start with a +1 index to
   // allow it recursively trigger itself - it is the user's responsibility to
   // ensure it doesn't end up in an infinite loop.
+  /**
+   * 主任务可入队逻辑
+   * 1. 队列为空
+   * 2. 正在清空队列(有正在执行的任务)且当前待入队任务是允许递归执行本身的，因此待入队任务和正在执行任务相同，但不能和后面待执行任务相同
+   * 3. 其他清空下，由于不会出现任务自身递归执行的情况，因此待入队任务不能和当前正在执行任务以及后面待执行任务相同
+   */
   if (
     (!queue.length ||
       !queue.includes(
@@ -82,6 +103,7 @@ export function queueJob(job: SchedulerJob) {
     job !== currentPreFlushParentJob
   ) {
     const pos = findInsertionIndex(job)
+    // 满足入队条件，将主任务入队
     if (pos > -1) {
       queue.splice(pos, 0, job)
     } else {
@@ -92,8 +114,14 @@ export function queueJob(job: SchedulerJob) {
 }
 
 function queueFlush() {
+  /**
+   * 在微任务已创建或者正在执行微任务时禁止再次创建更多的微任务
+   * 因为在主线程同步任务执行完后才会执行已创建的微任务，此时入队操作已完成，并且flushJobs会在一次微任务中会递归的将主任务队列全部清空，所以只需要一个微任务即可
+   * 如果重复创建微任务会导致接下来的微任务执行时队列是空的，那么这个微任务时无意义的，因为它不能清队
+   */
   if (!isFlushing && !isFlushPending) {
     isFlushPending = true
+    // 微任务创建成功，并记录当前微任务，作为nextTick创建自定义微任务的支点，也就是说，nextTick创建出来的微任务执行顺序紧跟在清队微任务后，保证自定义微任务执行时机的准确性
     currentFlushPromise = resolvedPromise.then(flushJobs)
   }
 }
@@ -209,13 +237,18 @@ export function flushPostFlushCbs(seen?: CountMap) {
 const getId = (job: SchedulerJob | SchedulerCb) =>
   job.id == null ? Infinity : job.id
 
+/**
+ * flushJobs执行顺序
+ * 批量清空前置回调任务队列 > 清空主任务队列 > 批量清空后置回调任务队列
+ */
 function flushJobs(seen?: CountMap) {
-  isFlushPending = false
-  isFlushing = true
+  isFlushPending = false // 关闭微任务等待执行标识
+  isFlushing = true // 开始微任务正在清空队列标识
   if (__DEV__) {
     seen = seen || new Map()
   }
 
+  // 批量执行清空前置回调任务队列
   flushPreFlushCbs(seen)
 
   // Sort queue before flush.
@@ -225,28 +258,41 @@ function flushJobs(seen?: CountMap) {
   //    priority number)
   // 2. If a component is unmounted during a parent component's update,
   //    its update can be skipped.
+  /* 
+    将主任务队列中的任务按照ID进行排序原因
+      1. 组件更新是由父到子的，而更新任务是在数据源更新时触发的，trigger会执行effect中的scheduler，scheduler回调会把effect作为更新任务推入主任务队列，排序保证了更新任务是按照由父到子的顺序进行执行的
+      2. 当一个组件父组件更新时执行卸载操作，任务排序确保了已卸载组件的更新会被跳过
+  */
   queue.sort((a, b) => getId(a) - getId(b))
 
   try {
+    // 遍历主任务队列，批量执行更新任务
     for (flushIndex = 0; flushIndex < queue.length; flushIndex++) {
       const job = queue[flushIndex]
       if (job && job.active !== false) {
         if (__DEV__ && checkRecursiveUpdates(seen!, job)) {
           continue
         }
+        // 执行当前更新任务
         callWithErrorHandling(job, null, ErrorCodes.SCHEDULER)
       }
     }
   } finally {
+    // 当前队列任务执行完毕，重置当前任务索引
     flushIndex = 0
+    // 清空主任务队列
     queue.length = 0
 
+    // 主队列清空后执行后置回调任务
     flushPostFlushCbs(seen)
 
-    isFlushing = false
-    currentFlushPromise = null
+    isFlushing = false // 清队完成后重置状态
+    currentFlushPromise = null // 清队完成后重置currentFlushPromise
     // some postFlushCb queued jobs!
     // keep flushing until it drains.
+    /* 
+      由于清队期间也有可能会有任务入队，因此会导致按照微任务开始执行时的队长度遍历清队，会导致无法彻底清干净，因此需要递归的清空队伍，保证一次清队，微任务中的所有任务都被全部清空
+    */
     if (
       queue.length ||
       pendingPreFlushCbs.length ||
