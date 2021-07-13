@@ -21,11 +21,11 @@ export interface ReactiveEffect<T = any> {
 }
 
 export interface ReactiveEffectOptions {
-  lazy?: boolean
-  scheduler?: (job: ReactiveEffect) => void
-  onTrack?: (event: DebuggerEvent) => void
-  onTrigger?: (event: DebuggerEvent) => void
-  onStop?: () => void
+  lazy?: boolean // 是否延迟触发effect
+  scheduler?: (job: ReactiveEffect) => void // 调度函数
+  onTrack?: (event: DebuggerEvent) => void // 追踪时触发
+  onTrigger?: (event: DebuggerEvent) => void // 触发回调时触发
+  onStop?: () => void // 停止监听时触发
   /**
    * Indicates whether the job is allowed to recursively trigger itself when
    * managed by the scheduler.
@@ -41,7 +41,7 @@ export interface ReactiveEffectOptions {
    * responsibility to perform recursive state mutation that eventually
    * stabilizes (#1727).
    */
-  allowRecurse?: boolean
+  allowRecurse?: boolean // 是否允许递归调用
 }
 
 export type DebuggerEvent = {
@@ -71,10 +71,15 @@ export function effect<T = any>(
   fn: () => T,
   options: ReactiveEffectOptions = EMPTY_OBJ
 ): ReactiveEffect<T> {
+  // 如果已经是effect函数，取得原来的fn
   if (isEffect(fn)) {
     fn = fn.raw
   }
   const effect = createReactiveEffect(fn, options)
+  /* 
+    如果lazy为false，马上执行一次
+    计算属性的lazy为true
+  */
   if (!options.lazy) {
     effect()
   }
@@ -97,10 +102,16 @@ function createReactiveEffect<T = any>(
   fn: () => T,
   options: ReactiveEffectOptions
 ): ReactiveEffect<T> {
+  /* 
+    reactiveEffect()返回一个新的effect，这个新的effect执行后
+    会将自己设为activeEffect，然后再执行fn函数，如果在fn函数里对响应式属性进行读取
+    会触发响应式属性get操作，从而收集依赖，而收集的这个依赖函数就是activeEffect
+  */
   const effect = function reactiveEffect(): unknown {
     if (!effect.active) {
       return fn()
     }
+    // 为了避免递归循环，所以要检测一下
     if (!effectStack.includes(effect)) {
       cleanup(effect)
       try {
@@ -109,22 +120,24 @@ function createReactiveEffect<T = any>(
         activeEffect = effect
         return fn()
       } finally {
+        // track将依赖函数activeEffect添加到对应的dep中，然后在finally中将activeEffect重置为上一个effect的值
         effectStack.pop()
         resetTracking()
         activeEffect = effectStack[effectStack.length - 1]
       }
     }
   } as ReactiveEffect
-  effect.id = uid++
+  effect.id = uid++ // 自增ID，唯一标识
   effect.allowRecurse = !!options.allowRecurse
-  effect._isEffect = true
-  effect.active = true
-  effect.raw = fn
-  effect.deps = []
-  effect.options = options
+  effect._isEffect = true // 用于标识方法是不是effect
+  effect.active = true // 用于判断当前effect是否激活，有一个stop()来将它设为false
+  effect.raw = fn // effect传入的fn
+  effect.deps = [] // 用于收集依赖
+  effect.options = options // 创建effect传入的options
   return effect
 }
 
+// 清空依赖
 function cleanup(effect: ReactiveEffect) {
   const { deps } = effect
   if (deps.length) {
@@ -153,11 +166,30 @@ export function resetTracking() {
   shouldTrack = last === undefined ? true : last
 }
 
+// 收集依赖
 export function track(target: object, type: TrackOpTypes, key: unknown) {
+  // activeEffect为空，代表没有依赖，直接返回
   if (!shouldTrack || activeEffect === undefined) {
     return
   }
+  // targetMap 依赖管理中心，用于收集依赖和触发依赖
   let depsMap = targetMap.get(target)
+  /* 
+    targetMap为每个target建立一个map
+    每个target的key对应着一个dep
+    然后用dep来收集依赖函数，当监听的key值发生变化时，触发dep中的依赖函数
+    类似于
+    targetMap(weakmap) = {
+      target1(map): {
+        key1(dep): {fn1, fn2, fn3 ...}
+        key2(dep): {fn1, fn2, fn3 ...}
+      },
+      target2(map): {
+        key1(dep): {fn1, fn2, fn3 ...}
+        key2(dep): {fn1, fn2, fn3 ...}
+      },
+    }
+  */
   if (!depsMap) {
     targetMap.set(target, (depsMap = new Map()))
   }
@@ -168,6 +200,7 @@ export function track(target: object, type: TrackOpTypes, key: unknown) {
   if (!dep.has(activeEffect)) {
     dep.add(activeEffect)
     activeEffect.deps.push(dep)
+    // 开发环境下会触发onTrack事件
     if (__DEV__ && activeEffect.options.onTrack) {
       activeEffect.options.onTrack({
         effect: activeEffect,
@@ -179,6 +212,7 @@ export function track(target: object, type: TrackOpTypes, key: unknown) {
   }
 }
 
+// 触发依赖
 export function trigger(
   target: object,
   type: TriggerOpTypes,
@@ -188,6 +222,7 @@ export function trigger(
   oldTarget?: Map<unknown, unknown> | Set<unknown>
 ) {
   const depsMap = targetMap.get(target)
+  // 如果没有收集过依赖，直接返回
   if (!depsMap) {
     // never been tracked
     return
@@ -197,18 +232,20 @@ export function trigger(
   const add = (effectsToAdd: Set<ReactiveEffect> | undefined) => {
     if (effectsToAdd) {
       effectsToAdd.forEach(effect => {
+        // 避免重复收集依赖
         if (effect !== activeEffect || effect.allowRecurse) {
           effects.add(effect)
         }
       })
     }
   }
-
+  // 在值被清空前，往相应的队列添加target所有的依赖
   if (type === TriggerOpTypes.CLEAR) {
     // collection being cleared
     // trigger all effects for target
     depsMap.forEach(add)
   } else if (key === 'length' && isArray(target)) {
+    // 当数组的length属性变化时触发
     depsMap.forEach((dep, key) => {
       if (key === 'length' || key >= (newValue as number)) {
         add(dep)
@@ -216,6 +253,7 @@ export function trigger(
     })
   } else {
     // schedule runs for SET | ADD | DELETE
+    // 如果不符合以上两个if条件，并且key !== undefined，往相应的队列添加依赖
     if (key !== void 0) {
       add(depsMap.get(key))
     }
