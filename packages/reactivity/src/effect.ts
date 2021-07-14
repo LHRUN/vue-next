@@ -108,13 +108,16 @@ function createReactiveEffect<T = any>(
     会触发响应式属性get操作，从而收集依赖，而收集的这个依赖函数就是activeEffect
   */
   const effect = function reactiveEffect(): unknown {
+    // 没有激活，已经调用effect stop函数停止监听
     if (!effect.active) {
       return fn()
     }
-    // 为了避免递归循环，所以要检测一下
+    // 为了避免递归循环判断effectStack中有没有effect
     if (!effectStack.includes(effect)) {
+      // 清除effect依赖
       cleanup(effect)
       try {
+        // 重新收集依赖
         enableTracking()
         effectStack.push(effect)
         activeEffect = effect
@@ -122,6 +125,7 @@ function createReactiveEffect<T = any>(
       } finally {
         // track将依赖函数activeEffect添加到对应的dep中，然后在finally中将activeEffect重置为上一个effect的值
         effectStack.pop()
+        // 重置依赖
         resetTracking()
         activeEffect = effectStack[effectStack.length - 1]
       }
@@ -166,7 +170,12 @@ export function resetTracking() {
   shouldTrack = last === undefined ? true : last
 }
 
-// 收集依赖
+/**
+ * @description: 收集依赖
+ * @param {target} 目标对象
+ * @param {type} 收集的类型
+ * @param {key} 触发 track 的 object 的 key
+ */
 export function track(target: object, type: TrackOpTypes, key: unknown) {
   // activeEffect为空，代表没有依赖，直接返回
   if (!shouldTrack || activeEffect === undefined) {
@@ -193,6 +202,8 @@ export function track(target: object, type: TrackOpTypes, key: unknown) {
   if (!depsMap) {
     targetMap.set(target, (depsMap = new Map()))
   }
+
+  // deps来收集依赖函数，当监听的key值发生变化，触发dep中的依赖函数
   let dep = depsMap.get(key)
   if (!dep) {
     depsMap.set(key, (dep = new Set()))
@@ -200,7 +211,7 @@ export function track(target: object, type: TrackOpTypes, key: unknown) {
   if (!dep.has(activeEffect)) {
     dep.add(activeEffect)
     activeEffect.deps.push(dep)
-    // 开发环境下会触发onTrack事件
+    // 开发环境下会触发onTrack事件 仅用于调试
     if (__DEV__ && activeEffect.options.onTrack) {
       activeEffect.options.onTrack({
         effect: activeEffect,

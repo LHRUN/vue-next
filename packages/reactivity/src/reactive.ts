@@ -179,8 +179,8 @@ export function shallowReadonly<T extends object>(
 function createReactiveObject(
   target: Target,
   isReadonly: boolean,
-  baseHandlers: ProxyHandler<any>,
-  collectionHandlers: ProxyHandler<any>,
+  baseHandlers: ProxyHandler<any>, // 基本类型的handlers
+  collectionHandlers: ProxyHandler<any>, // 主要针对(set、map、weakSet、weakMap)的handlers
   proxyMap: WeakMap<Target, any>
 ) {
   // 不是一个对象，直接返回原始数据，在开发环境下会打警告

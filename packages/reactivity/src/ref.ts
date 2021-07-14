@@ -57,10 +57,12 @@ class RefImpl<T> {
   public readonly __v_isRef = true
 
   constructor(private _rawValue: T, public readonly _shallow: boolean) {
+    // 如果是浅观察直接观察，不是则将rawValue转换成reactive
     this._value = _shallow ? _rawValue : convert(_rawValue)
   }
 
   get value() {
+    // 依赖收集
     track(toRaw(this), TrackOpTypes.GET, 'value')
     return this._value
   }
@@ -69,12 +71,14 @@ class RefImpl<T> {
     if (hasChanged(toRaw(newVal), this._rawValue)) {
       this._rawValue = newVal
       this._value = this._shallow ? newVal : convert(newVal)
+      // 触发依赖
       trigger(toRaw(this), TriggerOpTypes.SET, 'value', newVal)
     }
   }
 }
 
 function createRef(rawValue: unknown, shallow = false) {
+  // 如果是ref直接返回
   if (isRef(rawValue)) {
     return rawValue
   }
@@ -142,6 +146,7 @@ class CustomRefImpl<T> {
   }
 }
 
+// 创建自定义ref
 export function customRef<T>(factory: CustomRefFactory<T>): Ref<T> {
   return new CustomRefImpl(factory) as any
 }

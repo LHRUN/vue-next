@@ -171,6 +171,11 @@ export function h<P>(
 ): VNode
 
 // Actual implementation
+/* 
+  type: 元素的类型
+  propsOrChildren：数据对象，主要标识(props, attrs, dom props, class, style)
+  children 子节点
+*/
 export function h(type: any, propsOrChildren?: any, children?: any): VNode {
   const l = arguments.length
   if (l === 2) {

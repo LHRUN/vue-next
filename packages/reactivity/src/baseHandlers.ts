@@ -83,8 +83,18 @@ function createArrayInstrumentations() {
   return instrumentations
 }
 
+/**
+ * @description: 用于拦截对象的读取属性操作
+ * @param {isReadonly} 是否只读
+ * @param {shallow} 是否浅观察
+ */
 function createGetter(isReadonly = false, shallow = false) {
-  // target: 目标对象  key: 属性名 receiver: Proxy或者继承Proxy的对象
+  /**
+   * @description:
+   * @param {target} 目标对象
+   * @param {key} 属性名
+   * @param {receiver} Proxy或者继承Proxy的对象
+   */
   return function get(target: Target, key: string | symbol, receiver: object) {
     // target是否是响应式
     if (key === ReactiveFlags.IS_REACTIVE) {
@@ -92,6 +102,7 @@ function createGetter(isReadonly = false, shallow = false) {
       // target是否是只读
     } else if (key === ReactiveFlags.IS_READONLY) {
       return isReadonly
+      // 如果key是raw 并且 是已经存储在响应式处理后的map记录中就直接返回对象
     } else if (
       key === ReactiveFlags.RAW &&
       receiver ===
@@ -125,7 +136,7 @@ function createGetter(isReadonly = false, shallow = false) {
       return res
     }
 
-    // 只读对象不手机依赖
+    // 只读对象不收集依赖
     if (!isReadonly) {
       track(target, TrackOpTypes.GET, key)
     }
@@ -199,8 +210,14 @@ function createSetter(shallow = false) {
   }
 }
 
+/**
+ * @description: 用于拦截对象的删除属性操作
+ * @param {target} 目标对象
+ * @param {key} 键值
+ * @return {Boolean}
+ */
 function deleteProperty(target: object, key: string | symbol): boolean {
-  const hadKey = hasOwn(target, key)
+  const hadKey = hasOwn(target, key) // 检查一个对象是否包含当前key
   const oldValue = (target as any)[key]
   const result = Reflect.deleteProperty(target, key)
   // 如果删除结果为true，并且target拥有这个key就触发依赖
@@ -210,6 +227,12 @@ function deleteProperty(target: object, key: string | symbol): boolean {
   return result
 }
 
+/**
+ * @description: 检查一个对象是否拥有某个属性
+ * @param {target} 目标对象
+ * @param {key} 键值
+ * @return {Boolean}
+ */
 function has(target: object, key: string | symbol): boolean {
   const result = Reflect.has(target, key)
   if (!isSymbol(key) || !builtInSymbols.has(key)) {
@@ -217,7 +240,9 @@ function has(target: object, key: string | symbol): boolean {
   }
   return result
 }
-
+/* 
+ * 返回一个由目标对象自身的属性键组成的数组
+ */
 function ownKeys(target: object): (string | symbol)[] {
   track(target, TrackOpTypes.ITERATE, isArray(target) ? 'length' : ITERATE_KEY)
   return Reflect.ownKeys(target)

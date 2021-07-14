@@ -21,7 +21,9 @@ export interface WritableComputedOptions<T> {
 }
 
 class ComputedRefImpl<T> {
+  // 缓存结果
   private _value!: T
+  // 重新计算开关
   private _dirty = true
 
   public readonly effect: ReactiveEffect<T>
@@ -34,6 +36,11 @@ class ComputedRefImpl<T> {
     private readonly _setter: ComputedSetter<T>,
     isReadonly: boolean
   ) {
+    /* 
+      创建effect
+      lazy表示延迟触发
+      scheduler表示computed上游依赖改变的时候，会在effect trigger的时候调用scheduler，而不是直接调用effect
+    */
     this.effect = effect(getter, {
       lazy: true,
       scheduler: () => {
@@ -67,12 +74,17 @@ export function computed<T>(getter: ComputedGetter<T>): ComputedRef<T>
 export function computed<T>(
   options: WritableComputedOptions<T>
 ): WritableComputedRef<T>
+
 export function computed<T>(
   getterOrOptions: ComputedGetter<T> | WritableComputedOptions<T>
 ) {
   let getter: ComputedGetter<T>
   let setter: ComputedSetter<T>
 
+  /* 
+    如果传入是function 说明是只读computed
+    setter就是一个空的操作(NOOP)
+  */
   if (isFunction(getterOrOptions)) {
     getter = getterOrOptions
     setter = __DEV__
