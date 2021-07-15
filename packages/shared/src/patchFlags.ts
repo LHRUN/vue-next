@@ -16,14 +16,26 @@
  * Check the `patchElement` function in '../../runtime-core/src/renderer.ts' to see how the
  * flags are handled during diff.
  */
+/* 
+  编译时生成的flag
+  runtime在处理diff逻辑时，diff算法会进入优化模式，PatchFlag均为编译时生成。
+  当然你如果愿意的话也可以自己手写render来传入patchFlag，但其实是不建议这么做的。
+  在diff优化模式中，算法仅需对标记patchFlag的vnode进行处理（各个flag有相应的优化策略），其他的可略过，以获得性能上的提升。
+  注意：
+    - patchFlag > 0一定是动态节点，-1（HOIST）代表提升静态节点
+    - 负的patchFlag不参与位运算，比如flag & HOIST这种是不允许的
+    - patchFlag可以使用联合类型“|”，表示同时为节点打上多种flag，用“&”判断当前节点的patchFlag是否包含制定flag
+*/
 export const enum PatchFlags {
   /**
    * Indicates an element with dynamic textContent (children fast path)
+   * 插值生成的动态文本节点
    */
   TEXT = 1,
 
   /**
    * Indicates an element with dynamic class binding.
+   * 动态class绑定
    */
   CLASS = 1 << 1,
 
@@ -31,6 +43,9 @@ export const enum PatchFlags {
    * Indicates an element with dynamic style
    * The compiler pre-compiles static string styles into static objects
    * + detects and hoists inline static objects
+   * 翻: 动态绑定style，需要注意一点，如果绑定的是静态object，即object不会动态变化
+   *     将同样被当作静态属性来处理，静态属性声明会被提升到render函数体的最前端
+   *     减少不必要的属性创建开销
    * e.g. style="color: red" and :style="{ color: 'red' }" both get hoisted as
    *   const style = { color: 'red' }
    *   render() { return e('div', { style }) }
@@ -43,6 +58,9 @@ export const enum PatchFlags {
    * class/style). when this flag is present, the vnode also has a dynamicProps
    * array that contains the keys of the props that may change so the runtime
    * can diff them faster (without having to worry about removed props)
+   * 翻：dom元素包含除class、style之外的动态属性，或者组件包含动态属性（可以是class、style）
+   *     动态属性在编译阶段被收集到dynamicProps中，运行时做diff操作时会只对比动态属性的变化
+   *     省略对其他无关属性的diff（删除的属性无需关心）
    */
   PROPS = 1 << 3,
 
@@ -50,27 +68,34 @@ export const enum PatchFlags {
    * Indicates an element with props with dynamic keys. When keys change, a full
    * diff is always needed to remove the old key. This flag is mutually
    * exclusive with CLASS, STYLE and PROPS.
+   * 翻：包含动态变化的keys，需要对属性做全量diff，该标志位和
+   *     CLASS、STYLE、PROPS是互斥的，不会同时存在，有FULL_PROPS上面提到的三个标志位会失效
    */
   FULL_PROPS = 1 << 4,
 
   /**
    * Indicates an element with event listeners (which need to be attached
    * during hydration)
+   * 服务端渲染相关
    */
   HYDRATE_EVENTS = 1 << 5,
 
   /**
    * Indicates a fragment whose children order doesn't change.
+   * 稳定的fragment类型，其children不会变化，元素次序固定
+   * 如<div v-for="item in 10">{{ item }}</div>生成的fragment
    */
   STABLE_FRAGMENT = 1 << 6,
 
   /**
    * Indicates a fragment with keyed or partially keyed children
+   * fragment的children全部或部分节点标记key
    */
   KEYED_FRAGMENT = 1 << 7,
 
   /**
    * Indicates a fragment with unkeyed children.
+   * fragment的children节点均未标记key
    */
   UNKEYED_FRAGMENT = 1 << 8,
 
@@ -79,6 +104,8 @@ export const enum PatchFlags {
    * directives (onVnodeXXX hooks). since every patched vnode checks for refs
    * and onVnodeXXX hooks, it simply marks the vnode so that a parent block
    * will track it.
+   * 翻：不需要做props的patch，比如节点包含ref或者指令 ( onVnodeXXX hooks )
+   *     但是节点会被当作动态节点收集到对应block的dynamicChildren中
    */
   NEED_PATCH = 1 << 9,
 
@@ -86,6 +113,8 @@ export const enum PatchFlags {
    * Indicates a component with dynamic slots (e.g. slot that references a v-for
    * iterated value, or dynamic slot names).
    * Components with this flag are always force updated.
+   * 翻：表示带有动态插槽的组件（例如，引用V-for的插槽迭代值或动态插槽名称）
+   *     具有此标志的组件始终强制更新
    */
   DYNAMIC_SLOTS = 1 << 10,
 
@@ -107,6 +136,8 @@ export const enum PatchFlags {
   /**
    * Indicates a hoisted static vnode. This is a hint for hydration to skip
    * the entire sub tree since static content never needs to be updated.
+   * 翻：静态节点，由于被提升到render函数体最顶部，因此节点一旦声明就会维持在内存里
+   *     render时就不需要再重复创建节点了，同时diff时会跳过静态节点，因为内容不发生任何变化
    */
   HOISTED = -1,
   /**
