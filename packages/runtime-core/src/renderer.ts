@@ -1943,8 +1943,8 @@ function baseCreateRenderer(
 
   // can be all-keyed or mixed
   const patchKeyedChildren = (
-    c1: VNode[],
-    c2: VNodeArrayChildren,
+    c1: VNode[], // 旧子节点
+    c2: VNodeArrayChildren, // 新子节点
     container: RendererElement,
     parentAnchor: RendererNode | null,
     parentComponent: ComponentInternalInstance | null,
@@ -1953,8 +1953,8 @@ function baseCreateRenderer(
     slotScopeIds: string[] | null,
     optimized: boolean
   ) => {
-    let i = 0
-    const l2 = c2.length
+    let i = 0 // 遍历子节点的索引
+    const l2 = c2.length // 新子节点长度
     let e1 = c1.length - 1 // prev ending index 旧子节点组的尾指针
     let e2 = l2 - 1 // next ending index 新子节点组的尾指针
 
@@ -1972,6 +1972,7 @@ function baseCreateRenderer(
       const n2 = (c2[i] = optimized
         ? cloneIfMounted(c2[i] as VNode)
         : normalizeVNode(c2[i]))
+      // 比较 n1 与 n2 是否是同一类型的 VNode
       if (isSameVNodeType(n1, n2)) {
         patch(
           n1,
@@ -2019,6 +2020,7 @@ function baseCreateRenderer(
       } else {
         break
       }
+      // 完成 patch 操作后，尾部索引递减
       e1--
       e2--
     }
@@ -2036,11 +2038,14 @@ function baseCreateRenderer(
       两个方向至少有一个遍历没有中途断掉，那么首尾指针便会相撞。
       该case下旧节点组均经过patch操作，新节点组中间部分存在断档，因此当作新增节点进行挂载操作
     */
+    // 当旧子节点被遍历完
     if (i > e1) {
+      // 新节点还有元素未被遍历完
       if (i <= e2) {
         const nextPos = e2 + 1
         const anchor = nextPos < l2 ? (c2[nextPos] as VNode).el : parentAnchor
         while (i <= e2) {
+          // patch 时第一个参数传入 null，代表没有旧节点，直接将新节点插入即可
           patch(
             null,
             (c2[i] = optimized
@@ -2072,7 +2077,9 @@ function baseCreateRenderer(
       两个方向至少有一个遍历没有中途断掉，那么首尾指针便会相撞
       该case下新节点组均经过patch操作，旧节点组中间部分存在断档，因此将待删除节点进行卸载
     */
+    // 如果新子节点已被遍历完
     else if (i > e2) {
+      // 旧子节点未被遍历完
       while (i <= e1) {
         unmount(c1[i], parentComponent, parentSuspense, true)
         i++
@@ -2100,6 +2107,7 @@ function baseCreateRenderer(
           ? cloneIfMounted(c2[i] as VNode)
           : normalizeVNode(c2[i]))
         if (nextChild.key != null) {
+          // 如果是 DEV 环境，且 keyToNewIndexMap 已经存在当前节点的 key 值，则警告
           if (__DEV__ && keyToNewIndexMap.has(nextChild.key)) {
             warn(
               `Duplicate keys found during update:`,
@@ -2107,6 +2115,7 @@ function baseCreateRenderer(
               `Make sure keys are unique.`
             )
           }
+          // 以新子节点的 key 为键，索引为值，存入 map
           keyToNewIndexMap.set(nextChild.key, i)
         }
       }
@@ -2178,11 +2187,23 @@ function baseCreateRenderer(
             注意：0是特殊标志位，标识当前新节点无对应的旧节点
           */
           newIndexToOldIndexMap[newIndex - s2] = i + 1
+          /* 
+            记录是否需要做节点移位操作，如何发现节点是否移位了呢
+            在遍历patch过程中，每次patch都记录下最大的新节点index
+            其实也就是上一次的newIndex，如果每次记录的newIndex都保证比上次大，
+            那么新旧序列中前后两个节点的相对位置是没有发生变化的，反之则标记需要移位，因为节点的相对位置变了
+            比如：
+              (a b) c
+              (a c b)
+            b在新旧序列中相对a的位置都是在后面，至于中间插进来的c
+            在新旧序列对比b、c的时候，由于c最新对应的newIndex已经小于b对应的newIndex,因此会记录需要移位
+          */
           if (newIndex >= maxNewIndexSoFar) {
             maxNewIndexSoFar = newIndex
           } else {
             moved = true
           }
+          // 新旧点相对应，做patch操作
           patch(
             prevChild,
             c2[newIndex] as VNode,
@@ -2194,24 +2215,30 @@ function baseCreateRenderer(
             slotScopeIds,
             optimized
           )
+          // 记录已patch新节点的数量
           patched++
         }
       }
 
       // 5.3 move and mount
       // generate longest stable subsequence only when nodes have moved
+      // 当需要发生节点位移时，生成最长递增子序列，用于确定如何位移
       const increasingNewIndexSequence = moved
         ? getSequence(newIndexToOldIndexMap)
         : EMPTY_ARR
-      j = increasingNewIndexSequence.length - 1
+      j = increasingNewIndexSequence.length - 1 // 最长递增子序列数组的末尾索引
       // looping backwards so that we can use last patched node as anchor
+      // 从新序列尾部向前遍历，目的是能够使用上一个遍历的节点做锚点
       for (i = toBePatched - 1; i >= 0; i--) {
         const nextIndex = s2 + i
         const nextChild = c2[nextIndex] as VNode
+        // 确定锚点，如果是完整序列最后一个节点，anchor为父节点对应的anchor，否则就是上一个子节点
         const anchor =
           nextIndex + 1 < l2 ? (c2[nextIndex + 1] as VNode).el : parentAnchor
         if (newIndexToOldIndexMap[i] === 0) {
           // mount new
+          // 如果newIndexToOldIndexMap对应的值为0，说明新节点没有对应的旧节点
+          // 毫无疑问是新增节点，直接挂载
           patch(
             null,
             nextChild,
@@ -2227,7 +2254,17 @@ function baseCreateRenderer(
           // move if:
           // There is no stable subsequence (e.g. a reverse)
           // OR current node is not among the stable sequence
+          /* 
+            节点位移发生的条件：
+              1. moved标志位为true
+              2. 最长稳定子序列为空，比如节点组反转的case，对应j < 0
+              3. 最长稳定子序列当前值和当前访问的新节点index不相同
+          */
           if (j < 0 || i !== increasingNewIndexSequence[j]) {
+            /* 
+              将需要移位的新节点dom元素移位到anchor前面，最终的移位的结果就是
+              两元素在dom中的位置和在vnode中的位置完全一致
+            */
             move(nextChild, container, anchor, MoveType.REORDER)
           } else {
             j--
