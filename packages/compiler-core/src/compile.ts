@@ -80,10 +80,17 @@ export function baseCompile(
     onError(createCompilerError(ErrorCodes.X_SCOPE_ID_NOT_SUPPORTED))
   }
 
+  // 生成AST节点树
   const ast = isString(template) ? baseParse(template, options) : template
+  // 获取节点转换工具集、指令转换工具集
   const [nodeTransforms, directiveTransforms] = getBaseTransformPreset(
     prefixIdentifiers
   )
+  /* 
+    遍历AST节点树，对上面生成的AST进行指令转换，生成可用节点，同时根据compiler
+    传入的配置（如是否做静态节点提升等）对AST节点树进行优化处理，为rootNode及
+    下属每个节点挂载codegenNode
+  */
   transform(
     ast,
     extend({}, options, {
@@ -100,6 +107,7 @@ export function baseCompile(
     })
   )
 
+  // 对转换及优化后的AST进行代码生成
   return generate(
     ast,
     extend({}, options, {

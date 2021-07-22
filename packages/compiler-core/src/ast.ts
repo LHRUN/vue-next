@@ -531,21 +531,32 @@ export const locStub: SourceLocation = {
   end: { line: 1, column: 1, offset: 0 }
 }
 
+/* 
+  创建一个虚拟根节点容器，根据模版解析出children和对应的位置信息，透传给根节点对象
+  rootNode: 根节点是一个临时容器，真正在运行时映射成具体内容的是rootNode下的children，
+            说白了rootNode只是个用来存放实际节点的空壳子，假如parse AST节点时template string中是多根节点，
+            那么没有一个抽象出来的根节点就无法表述完整的树结构，这也是为什么vue3.0能够允许多根模版的原因所在。
+*/
 export function createRoot(
   children: TemplateChildNode[],
   loc = locStub
 ): RootNode {
+  // 生成AST根节点的结构
   return {
-    type: NodeTypes.ROOT,
-    children,
+    type: NodeTypes.ROOT, // 节点类型
+    children, // 子节点
     helpers: [],
-    components: [],
-    directives: [],
+    components: [], // 组件节点
+    directives: [], // 指令节点
     hoists: [],
     imports: [],
     cached: 0,
     temps: 0,
-    codegenNode: undefined,
+    codegenNode: undefined, // 用于后续generate阶段生成vnode创建物料
+    /* 
+      节点在template string中所处的位置，结构{ source, start, end }
+      source对应节点在模版中对应的string部分，start、end对应节点起始标签对应template string中的位置
+    */
     loc
   }
 }

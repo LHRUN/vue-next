@@ -1958,7 +1958,7 @@ function baseCreateRenderer(
     let e1 = c1.length - 1 // prev ending index 旧子节点组的尾指针
     let e2 = l2 - 1 // next ending index 新子节点组的尾指针
 
-    // 1. sync from start
+    // 1. sync from startr
     // (a b) c
     // (a b) d e
     /* 
@@ -2122,10 +2122,14 @@ function baseCreateRenderer(
 
       // 5.2 loop through old children left to be patched and try to patch
       // matching nodes & remove nodes that are no longer present
+      /* 
+        遍历旧节点并尝试找到匹配的新节点
+        进行匹配新旧节点后删除不再存在的旧节点，并对是否位移做出标记
+      */
       let j
       let patched = 0 // 记录已执行patch的新序列节点数量
       const toBePatched = e2 - s2 + 1 // 将要执行patch的节点数目，即新序列的节点数量
-      let moved = false
+      let moved = false // 移动标识
       // used to track whether any node has moved 翻：用于跟踪任何节点移动
       let maxNewIndexSoFar = 0
       // works as Map<newIndex, oldIndex>
@@ -2155,7 +2159,7 @@ function baseCreateRenderer(
           unmount(prevChild, parentComponent, parentSuspense, true)
           continue
         }
-        let newIndex
+        let newIndex // 新旧节点key相同的新节点index
         if (prevChild.key != null) {
           /* 
             如果旧节点携带有效的key值，通过之前生成的新序列key-index映射表

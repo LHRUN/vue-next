@@ -101,12 +101,19 @@ export interface ParserContext {
   onWarn: NonNullable<ErrorHandlingOptions['onWarn']>
 }
 
+/* 
+  将template string解析成AST
+  AST是vue对节点的一种表述形式，和平时JS生成的抽象语法树是两码事
+*/
 export function baseParse(
-  content: string,
+  content: string, // 原始的模板字符串
   options: ParserOptions = {}
 ): RootNode {
+  // 获得parser上下文，相当于class实例化的产物，用来存储parser的一些信息
   const context = createParserContext(content, options)
+  // 获取parser开始位置
   const start = getCursor(context)
+  // 生成AST节点
   return createRoot(
     parseChildren(context, TextModes.DATA, []),
     getSelection(context, start)
@@ -123,12 +130,13 @@ function createParserContext(
     options[key] = rawOptions[key] || defaultParserOptions[key]
   }
   return {
-    options,
-    column: 1,
-    line: 1,
-    offset: 0,
-    originalSource: content,
-    source: content,
+    options, // parser配置项
+    // column、line、offset均是相对template string的全局位置信息
+    column: 1, // parser解析到的列数 因为parse过程中会遇到\n\t\f之类的转义字符
+    line: 1, // parser解析到的行数
+    offset: 0, // 解析到相对于template string开始的位置
+    originalSource: content, // 原始template string
+    source: content, // parser处理后的最新template string
     inPre: false,
     inVPre: false,
     onWarn: options.onWarn
@@ -138,12 +146,14 @@ function createParserContext(
 function parseChildren(
   context: ParserContext,
   mode: TextModes,
-  ancestors: ElementNode[]
+  ancestors: ElementNode[] // 祖先节点，是一个栈结构，用于维护节点嵌套关系，越靠后的节点在dom树中的层级越深
 ): TemplateChildNode[] {
+  // 获取父节点
   const parent = last(ancestors)
   const ns = parent ? parent.ns : Namespaces.HTML
-  const nodes: TemplateChildNode[] = []
+  const nodes: TemplateChildNode[] = [] // 存储解析出来的AST子节点
 
+  // 遇到闭合标签结束解析
   while (!isEnd(context, mode, ancestors)) {
     __TEST__ && assert(context.source.length > 0)
     const s = context.source
@@ -151,7 +161,7 @@ function parseChildren(
 
     if (mode === TextModes.DATA || mode === TextModes.RCDATA) {
       if (!context.inVPre && startsWith(s, context.options.delimiters[0])) {
-        // '{{'
+        // '{{' 解析以'{{'开头的模板
         node = parseInterpolation(context, mode)
       } else if (mode === TextModes.DATA && s[0] === '<') {
         // https://html.spec.whatwg.org/multipage/parsing.html#tag-open-state
@@ -160,9 +170,10 @@ function parseChildren(
         } else if (s[1] === '!') {
           // https://html.spec.whatwg.org/multipage/parsing.html#markup-declaration-open-state
           if (startsWith(s, '<!--')) {
+            // 解析注释节点
             node = parseComment(context)
           } else if (startsWith(s, '<!DOCTYPE')) {
-            // Ignore DOCTYPE by a limitation.
+            // Ignore DOCTYPE by a limitation. 忽略 DOCTYPE
             node = parseBogusComment(context)
           } else if (startsWith(s, '<![CDATA[')) {
             if (ns !== Namespaces.HTML) {
@@ -177,6 +188,7 @@ function parseChildren(
           }
         } else if (s[1] === '/') {
           // https://html.spec.whatwg.org/multipage/parsing.html#end-tag-open-state
+          // 解析结束标签错误的逻辑
           if (s.length === 2) {
             emitError(context, ErrorCodes.EOF_BEFORE_TAG_NAME, 2)
           } else if (s[2] === '>') {
@@ -196,6 +208,7 @@ function parseChildren(
             node = parseBogusComment(context)
           }
         } else if (/[a-z]/i.test(s[1])) {
+          // 解析正常的html开始标签，获得解析到的AST节点
           node = parseElement(context, ancestors)
 
           // 2.x <template> with no directive compat
@@ -234,6 +247,7 @@ function parseChildren(
       }
     }
     if (!node) {
+      // 普通文本节点
       node = parseText(context, mode)
     }
 
