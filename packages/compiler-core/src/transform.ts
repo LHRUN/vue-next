@@ -312,15 +312,23 @@ export function createTransformContext(
 }
 
 export function transform(root: RootNode, options: TransformOptions) {
+  // 创建transform上下文
   const context = createTransformContext(root, options)
+  /* 
+    深度遍历AST，根据节点中的指令遍历过程中转换成
+    每个节点的codegenNode会挂载转换后的节点内容
+  */
   traverseNode(root, context)
   if (options.hoistStatic) {
+    // 如果编译器配置了静态节点提升，对静态节点进行提升
     hoistStatic(root, context)
   }
   if (!options.ssr) {
+    // 根据根节点下的children生成rootNode上的codegenNode
     createRootCodegen(root, context)
   }
   // finalize meta information
+  // 将transform上下文上的信息挂载到根节点
   root.helpers = [...context.helpers.keys()]
   root.components = [...context.components]
   root.directives = [...context.directives]
@@ -405,18 +413,38 @@ export function traverseChildren(
   }
 }
 
+/* 
+  遍历AST节点树，通过node转换器(nodeTransforms)对当前节点进行node转换
+  子节点全部遍历完成后执行对应指令的onExit回调退出转换。
+  对v-if、v-for等指令的转换生成对应节点，都是由nodeTransforms中对应的指令转换工具完成的
+*/
 export function traverseNode(
   node: RootNode | TemplateChildNode,
   context: TransformContext
 ) {
+  // 上下文记录当前正在遍历的节点
   context.currentNode = node
   // apply transform plugins
+  /* 
+    转换器：transformElement、transformExpression、transformText、transformSlotOutlet...
+    transformElement：负责整个节点层面的转换
+    transformExpression：负责节点中表达式的转化
+    transformText：负责节点中文本的转换
+    转换后会增加一堆表达式表述对象
+  */
   const { nodeTransforms } = context
   const exitFns = []
+  // 依次调用指令转换工具
   for (let i = 0; i < nodeTransforms.length; i++) {
+    /* 
+      转换器只负责生成onExit回调，onExit函数才是执行转换主逻辑的地方，为什么要推到栈中先不执行呢？
+      因为要等到子节点都转换完成挂载gencodeNode后，也就是深度遍历完成后
+      再执行当前节点栈中的onExit，这样保证了子节点的表达式全部生成完毕
+    */
     const onExit = nodeTransforms[i](node, context)
     if (onExit) {
       if (isArray(onExit)) {
+        // v-if、v-for为结构化指令，其onExit是数组形式
         exitFns.push(...onExit)
       } else {
         exitFns.push(onExit)
@@ -448,6 +476,7 @@ export function traverseNode(
 
     // for container types, further traverse downwards
     case NodeTypes.IF:
+      // 对v-if生成的节点束进行遍历
       for (let i = 0; i < node.branches.length; i++) {
         traverseNode(node.branches[i], context)
       }
@@ -456,10 +485,12 @@ export function traverseNode(
     case NodeTypes.FOR:
     case NodeTypes.ELEMENT:
     case NodeTypes.ROOT:
+      // 遍历子节点
       traverseChildren(node, context)
       break
   }
 
+  // 当前节点树遍历完成，依次执行栈中的指令退出回调onExit
   // exit transforms
   context.currentNode = node
   let i = exitFns.length

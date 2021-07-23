@@ -69,6 +69,10 @@ const directiveImportMap = new WeakMap<DirectiveNode, symbol>()
 export const transformElement: NodeTransform = (node, context) => {
   // perform the work on exit, after all child expressions have been
   // processed and merged.
+  /* 
+    返回闭包，也是真正执行transform逻辑生成gencodeNode的地方，返回闭包是为了透出到外部，
+    由外部控制调用时机，等待子代表达式转换生成完毕后再执行当前AST节点
+  */
   return function postTransformElement() {
     node = context.currentNode!
 
@@ -83,14 +87,16 @@ export const transformElement: NodeTransform = (node, context) => {
     }
 
     const { tag, props } = node
-    const isComponent = node.tagType === ElementTypes.COMPONENT
+    const isComponent = node.tagType === ElementTypes.COMPONENT // 是否为组件
 
     // The goal of the transform is to create a codegenNode implementing the
     // VNodeCall interface.
+    // 决定创建组件vnode时的tag值
     let vnodeTag = isComponent
       ? resolveComponentType(node as ComponentNode, context)
       : `"${tag}"`
 
+    // 是否是动态组件，resolveComponentType生成的tag值为call表达式
     const isDynamicComponent =
       isObject(vnodeTag) && vnodeTag.callee === RESOLVE_DYNAMIC_COMPONENT
 
@@ -102,6 +108,7 @@ export const transformElement: NodeTransform = (node, context) => {
     let dynamicPropNames: string[] | undefined
     let vnodeDirectives: VNodeCall['directives']
 
+    // 需要创建block的情况：动态组件(v-bind:is)、svg、动态key
     let shouldUseBlock =
       // dynamic component may resolve to plain elements
       isDynamicComponent ||
@@ -119,11 +126,17 @@ export const transformElement: NodeTransform = (node, context) => {
 
     // props
     if (props.length > 0) {
+      /* 
+        buildProps会在处理props过程中解析出vnode创建所需的表达式对象
+        包括属性、patchflag、动态属性名称集合、指令集合
+      */
       const propsBuildResult = buildProps(node, context)
-      vnodeProps = propsBuildResult.props
-      patchFlag = propsBuildResult.patchFlag
-      dynamicPropNames = propsBuildResult.dynamicPropNames
+      vnodeProps = propsBuildResult.props // ObjectExpressions属性集
+      patchFlag = propsBuildResult.patchFlag // patchFlag
+      dynamicPropNames = propsBuildResult.dynamicPropNames // 动态属性名称集合
       const directives = propsBuildResult.directives
+
+      // 运行时指令，创建运行时指令的ArrayExpression
       vnodeDirectives =
         directives && directives.length
           ? (createArrayExpression(
@@ -169,9 +182,11 @@ export const transformElement: NodeTransform = (node, context) => {
           patchFlag |= PatchFlags.DYNAMIC_SLOTS
         }
       } else if (node.children.length === 1 && vnodeTag !== TELEPORT) {
+        // 仅有一个子节点且不是teleport类型的情况
         const child = node.children[0]
         const type = child.type
         // check for dynamic text children
+        // 检查是否包含动态文本节点，即插值、复合表达式
         const hasDynamicTextChild =
           type === NodeTypes.INTERPOLATION ||
           type === NodeTypes.COMPOUND_EXPRESSION
@@ -179,17 +194,21 @@ export const transformElement: NodeTransform = (node, context) => {
           hasDynamicTextChild &&
           getConstantType(child, context) === ConstantTypes.NOT_CONSTANT
         ) {
-          patchFlag |= PatchFlags.TEXT
+          patchFlag |= PatchFlags.TEXT // 标记为动态文本
         }
         // pass directly if the only child is a text node
         // (plain / interpolation / expression)
+        /* 
+          如果当前唯一的子节点是文本节点(插值类型、复合表达式类型、原生文本节点)
+          直接将该文本节点作为vnodeChildren
+        */
         if (hasDynamicTextChild || type === NodeTypes.TEXT) {
           vnodeChildren = child as TemplateTextChildNode
         } else {
           vnodeChildren = node.children
         }
       } else {
-        vnodeChildren = node.children
+        vnodeChildren = node.children // 多子节点情况直接拷贝其子节点作为vnodeChildren
       }
     }
 
@@ -212,7 +231,7 @@ export const transformElement: NodeTransform = (node, context) => {
         vnodePatchFlag = String(patchFlag)
       }
       if (dynamicPropNames && dynamicPropNames.length) {
-        vnodeDynamicProps = stringifyDynamicPropNames(dynamicPropNames)
+        vnodeDynamicProps = stringifyDynamicPropNames(dynamicPropNames) // 动态属性字符串化
       }
     }
 
@@ -366,10 +385,10 @@ export function buildProps(
   props: ElementNode['props'] = node.props,
   ssr = false
 ): {
-  props: PropsExpression | undefined
-  directives: DirectiveNode[]
+  props: PropsExpression | undefined // 属性表达式
+  directives: DirectiveNode[] // 运行时指令
   patchFlag: number
-  dynamicPropNames: string[]
+  dynamicPropNames: string[] // 动态属性集
 } {
   const { tag, loc: elementLoc } = node
   const isComponent = node.tagType === ElementTypes.COMPONENT

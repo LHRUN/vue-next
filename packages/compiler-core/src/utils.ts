@@ -158,13 +158,21 @@ export function advancePositionWithClone(
 
 // advance by mutation without cloning (for performance reasons), since this
 // gets called a lot in the parser
+/* 
+  根据传入长度对模版字符串向前推进，同时推进后的最新位置信息
+  函数在parser中会频繁调用，考虑到拷贝新的位置信息耗费性能，因此直接修改源位置信息以节省开销
+*/
 export function advancePositionWithMutation(
-  pos: Position,
-  source: string,
-  numberOfCharacters: number = source.length
+  pos: Position, // 解析器当前位置信息
+  source: string, // 当前待分析模板字符串
+  numberOfCharacters: number = source.length // 模板字符串推进长度
 ): Position {
-  let linesCount = 0
-  let lastNewLinePos = -1
+  let linesCount = 0 // 换行后的总行数
+  let lastNewLinePos = -1 // 换行后上一行最后一个字符在template string中的位置
+  /* 
+    遍历推进的内容，遇到换行符累加行数linesCount，
+    同时记录上一行最后一个字符的位置
+  */
   for (let i = 0; i < numberOfCharacters; i++) {
     if (source.charCodeAt(i) === 10 /* newline char code */) {
       linesCount++
@@ -172,6 +180,7 @@ export function advancePositionWithMutation(
     }
   }
 
+  // 累加之前的position结果，计算出parser最新的位置信息
   pos.offset += numberOfCharacters
   pos.line += linesCount
   pos.column =

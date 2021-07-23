@@ -199,9 +199,9 @@ export interface DirectiveNode extends Node {
  */
 export const enum ConstantTypes {
   NOT_CONSTANT = 0,
-  CAN_SKIP_PATCH,
-  CAN_HOIST,
-  CAN_STRINGIFY
+  CAN_SKIP_PATCH, // 可以跳过patch
+  CAN_HOIST, // 可以被静态提升
+  CAN_STRINGIFY // 可以被字符序列化
 }
 
 export interface SimpleExpressionNode extends Node {
