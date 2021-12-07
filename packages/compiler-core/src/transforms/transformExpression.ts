@@ -89,6 +89,11 @@ interface PrefixMeta {
 // Important: since this function uses Node.js only dependencies, it should
 // always be used with a leading !__BROWSER__ check so that it can be
 // tree-shaken from the browser build.
+/* 
+  内部依赖了@babel/parser库去解析表达式生成AST节点
+  并依赖了estree-walker库去遍历这个AST节点，然后对节点分析去判断是否需要加前缀
+  接着对AST节点修改，最终转换生成新的表达式对象
+*/
 export function processExpression(
   node: SimpleExpressionNode,
   context: TransformContext,

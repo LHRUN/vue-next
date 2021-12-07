@@ -71,8 +71,10 @@ export function baseCompile(
     }
   }
 
+  // prefixIdentifiers判断代码生成用哪种模式 module 和 function
   const prefixIdentifiers =
     !__BROWSER__ && (options.prefixIdentifiers === true || isModuleMode)
+
   if (!prefixIdentifiers && options.cacheHandlers) {
     onError(createCompilerError(ErrorCodes.X_CACHE_HANDLER_NOT_SUPPORTED))
   }
@@ -106,7 +108,6 @@ export function baseCompile(
       )
     })
   )
-
   // 对转换及优化后的AST进行代码生成
   return generate(
     ast,

@@ -80,6 +80,7 @@ function resolveAsset(
   warnMissing = true,
   maybeSelfReference = false
 ) {
+  // 获取当前渲染实例
   const instance = currentRenderingInstance || currentInstance
   if (instance) {
     const Component = instance.type

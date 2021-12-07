@@ -62,11 +62,15 @@ export const createApp = ((...args) => {
   }
 
   const { mount } = app
+  // 重写mount方法
   app.mount = (containerOrSelector: Element | ShadowRoot | string): any => {
+    // 获取DOM容器节点
     const container = normalizeContainer(containerOrSelector)
+    // 不是合法的DOM节点 return
     if (!container) return
-
+    // 获取定义的Vue app对象，之前的rootComponent
     const component = app._component
+    // 如果不是函数，没有render方法，没有template  就使用DOM元素内的innerHtml作为内容
     if (!isFunction(component) && !component.render && !component.template) {
       // __UNSAFE__
       // Reason: potential execution of JS expressions in in-DOM template.
@@ -87,9 +91,10 @@ export const createApp = ((...args) => {
         }
       }
     }
-
+    // 挂载前清除dom元素内容
     // clear content before mounting
     container.innerHTML = ''
+    // 真正的挂载
     const proxy = mount(container, false, container instanceof SVGElement)
     if (container instanceof Element) {
       container.removeAttribute('v-cloak')

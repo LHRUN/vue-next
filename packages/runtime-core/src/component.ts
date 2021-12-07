@@ -557,6 +557,7 @@ export function setupComponent(
 
   const { props, children } = instance.vnode
   const isStateful = isStatefulComponent(instance)
+  // 初始化props slots 生命周期函数
   initProps(instance, props, isStateful, isSSR)
   initSlots(instance, children)
 
@@ -598,21 +599,26 @@ function setupStatefulComponent(
     }
   }
   // 0. create render proxy property access cache
+  // 创建渲染代理的属性访问缓存
   instance.accessCache = Object.create(null)
   // 1. create public instance / render proxy
   // also mark it raw so it's never observed
+  // 创建渲染上下文代理
   instance.proxy = markRaw(new Proxy(instance.ctx, PublicInstanceProxyHandlers))
   if (__DEV__) {
     exposePropsOnRenderContext(instance)
   }
   // 2. call setup()
+  // 处理setup函数
   const { setup } = Component
   if (setup) {
+    // 如果setup函数带参数，则创建一个setupContext
     const setupContext = (instance.setupContext =
       setup.length > 1 ? createSetupContext(instance) : null)
 
     currentInstance = instance
     pauseTracking()
+    // 执行setup函数，获取结果
     const setupResult = callWithErrorHandling(
       setup,
       instance,
@@ -796,6 +802,7 @@ export function finishComponentSetup(
   if (__FEATURE_OPTIONS_API__ && !(__COMPAT__ && skipOptions)) {
     currentInstance = instance
     pauseTracking()
+    // 兼容options api
     applyOptions(instance)
     resetTracking()
     currentInstance = null

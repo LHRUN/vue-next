@@ -480,9 +480,9 @@ function baseCreateRenderer(
   // Note: functions inside this closure should use `const xxx = () => {}`
   // style in order to prevent being inlined by minifiers.
   const patch: PatchFn = (
-    n1, // 旧节点
+    n1, // 旧节点 当n1为null的时候，表示是一次挂载的过程
     n2, // 新节点
-    container, // 新节点的容器
+    container, // 新节点的容器 在vnode渲染生成DOM后，会挂载到container下面
     anchor = null, // 锚点，用来标识当我们对新旧节点做增删或移动等操作时，以哪个节点为参照物
     parentComponent = null,
     parentSuspense = null,
@@ -777,6 +777,7 @@ function baseCreateRenderer(
       hostCloneNode !== undefined &&
       patchFlag === PatchFlags.HOISTED
     ) {
+      // 如果patchFlag为静态节点，不进行创建而是clone 提升性能
       // If a vnode has non-null el, it means it's being reused.
       // Only static vnodes can be reused, so its mounted DOM nodes should be
       // exactly the same, and we can simply do a clone here.
@@ -1373,6 +1374,7 @@ function baseCreateRenderer(
   ) => {
     n2.slotScopeIds = slotScopeIds
     if (n1 == null) {
+      // 挂载组件
       if (n2.shapeFlag & ShapeFlags.COMPONENT_KEPT_ALIVE) {
         ;(parentComponent!.ctx as KeepAliveContext).activate(
           n2,
@@ -1393,6 +1395,7 @@ function baseCreateRenderer(
         )
       }
     } else {
+      // 更新组件
       updateComponent(n1, n2, optimized)
     }
   }
@@ -1475,6 +1478,7 @@ function baseCreateRenderer(
 
   const updateComponent = (n1: VNode, n2: VNode, optimized: boolean) => {
     const instance = (n2.component = n1.component)!
+    // 根据新旧子组件vnode判断是否需要更新子组件
     if (shouldUpdateComponent(n1, n2, optimized)) {
       if (
         __FEATURE_SUSPENSE__ &&
@@ -1496,8 +1500,10 @@ function baseCreateRenderer(
         instance.next = n2
         // in case the child component is also queued, remove it to avoid
         // double updating the same child component in the same flush.
+        // 子组件也可能因为数据变化被添加到更新队列里，移除它们防止对一个子组件重复更新
         invalidateJob(instance.update)
         // instance.update is the reactive effect runner.
+        // 执行子组件的副作用渲染函数
         instance.update()
       }
     } else {
@@ -1518,10 +1524,13 @@ function baseCreateRenderer(
     optimized
   ) => {
     // create reactive effect for rendering
+    // 创建响应式的副作用渲染函数
     instance.update = effect(function componentEffect() {
       if (!instance.isMounted) {
+        // 首次渲染
         let vnodeHook: VNodeHook | null | undefined
         const { el, props } = initialVNode
+        // 取出mount相关的生命周期函数
         const { bm, m, parent } = instance
 
         // beforeMount hook
@@ -1538,13 +1547,13 @@ function baseCreateRenderer(
         ) {
           instance.emit('hook:beforeMount')
         }
-
         if (el && hydrateNode) {
           // vnode has adopted host node - perform hydration instead of mount.
           const hydrateSubTree = () => {
             if (__DEV__) {
               startMeasure(instance, `render`)
             }
+            // 执行编译后的渲染函数
             instance.subTree = renderComponentRoot(instance)
             if (__DEV__) {
               endMeasure(instance, `render`)
@@ -1755,9 +1764,13 @@ function baseCreateRenderer(
     nextVNode: VNode,
     optimized: boolean
   ) => {
+    // 新组件vnode的component属性指向组件实例
     nextVNode.component = instance
+    // 旧组件vnode的props属性
     const prevProps = instance.vnode.props
+    // 组件实例的vnode属性指向新的组件vnode
     instance.vnode = nextVNode
+    // 清空next属性，为了下一次重新渲染准备
     instance.next = null
     updateProps(instance, nextVNode.props, prevProps, optimized)
     updateSlots(instance, nextVNode.children, optimized)
@@ -2582,14 +2595,17 @@ function baseCreateRenderer(
   }
 
   const render: RootRenderFunction = (vnode, container, isSVG) => {
+    // vnode为空，销毁组件
     if (vnode == null) {
       if (container._vnode) {
         unmount(container._vnode, null, null, true)
       }
     } else {
+      // 创建 or 更新
       patch(container._vnode || null, vnode, container, null, null, null, isSVG)
     }
     flushPostFlushCbs()
+    // 缓存vnode节点，表示已经渲染
     container._vnode = vnode
   }
 

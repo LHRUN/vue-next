@@ -150,7 +150,7 @@ export function createTransformContext(
 ): TransformContext {
   const nameMatch = filename.replace(/\?.*$/, '').match(/([^/\\]+)\.\w+$/)
   const context: TransformContext = {
-    // options
+    // options 配置
     selfName: nameMatch && capitalize(camelize(nameMatch[1])),
     prefixIdentifiers,
     hoistStatic,
@@ -172,7 +172,7 @@ export function createTransformContext(
     onWarn,
     compatConfig,
 
-    // state
+    // state 状态数据
     root,
     helpers: new Map(),
     components: new Set(),
@@ -451,10 +451,11 @@ export function traverseNode(
       }
     }
     if (!context.currentNode) {
-      // node was removed
+      // node was removed 节点被移除
       return
     } else {
       // node may have been replaced
+      // 因为在转换的过程中节点可能被替换，恢复到之前的节点
       node = context.currentNode
     }
   }
@@ -464,6 +465,7 @@ export function traverseNode(
       if (!context.ssr) {
         // inject import for the Comment symbol, which is needed for creating
         // comment nodes with `createVNode`
+        // 需要导入createComment辅助函数
         context.helper(CREATE_COMMENT)
       }
       break

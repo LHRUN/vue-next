@@ -190,6 +190,7 @@ export interface VNode<
 // can divide a template into nested blocks, and within each block the node
 // structure would be stable. This allows us to skip most children diffing
 // and only worry about the dynamic nodes (indicated by patch flags).
+// 设计block主要就是收集动态的vnode的节点，在patch阶段只比对这些动态vnode节点
 export const blockStack: (VNode[] | null)[] = [] // 用于维护父子block关系的栈结构
 export let currentBlock: VNode[] | null = null // 当前block的子代block及动态节点容器
 
@@ -267,6 +268,7 @@ export function createBlock(
     true /* isBlock: prevent a block from tracking itself */
   )
   // save current block children on the block vnode
+  // 在vnode上保留当前Block收集的动态子节点
   vnode.dynamicChildren =
     isBlockTreeEnabled > 0 ? currentBlock || (EMPTY_ARR as any) : null
   // close block
@@ -456,7 +458,7 @@ function _createVNode(
   if (__DEV__ && vnode.key !== vnode.key) {
     warn(`VNode created with invalid key (NaN). VNode type:`, vnode.type)
   }
-
+  // 处理children子节点
   normalizeChildren(vnode, children)
 
   // normalize suspense children

@@ -147,7 +147,7 @@ export function initProps(
   def(attrs, InternalObjectKey, 1)
 
   instance.propsDefaults = Object.create(null)
-
+  // 设置props的值
   setFullProps(instance, rawProps, props, attrs)
 
   // ensure all declared prop keys are present
@@ -157,13 +157,13 @@ export function initProps(
     }
   }
 
-  // validation
+  // validation 检验props合法
   if (__DEV__) {
     validateProps(rawProps || {}, props, instance)
   }
 
   if (isStateful) {
-    // stateful
+    // stateful 响应式处理
     instance.props = isSSR ? props : shallowReactive(props)
   } else {
     if (!instance.type.props) {
@@ -313,12 +313,14 @@ function setFullProps(
   props: Data,
   attrs: Data
 ) {
+  // 标准化props的配置
   const [options, needCastKeys] = instance.propsOptions
   let hasAttrsChanged = false
   let rawCastValues: Data | undefined
   if (rawProps) {
     for (let key in rawProps) {
       // key, ref are reserved and never passed down
+      // 一些保留的prop 比如ref、key是不会传递的
       if (isReservedProp(key)) {
         continue
       }

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+  <script src="../../packages/vue/dist/vue.global.js"></script>
+</head>
+<body>
+  <h3>reactive</h3>
+  <div id="app">asd</div>
+  <script>
+    const { createApp, reactive, ref } = Vue
+    const App = {
+      template: `
+        <div>
+          <input v-model="refTest" />
+          <p @click="click">{{refTest}}</p>
+        </div>
+      `,
+      data() {
+        return {
+          value: '222'
+        }
+      },
+      setup() {
+        const click = () => {
+          refTest.value = refTest.value + 1
+        }
+        const state = reactive({
+          a: {
+            b: {
+              c: 1
+            }
+          }
+        })
+        const refTest = ref(0)
+        return {
+          state,
+          refTest,
+          click
+        }
+      }
+    }
+    createApp(App).mount('#app')
+  </script>
+</body>
+</html>

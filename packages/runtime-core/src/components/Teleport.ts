@@ -95,6 +95,7 @@ export const TeleportImpl = {
 
     if (n1 == null) {
       // insert anchors in the main view
+      // 在主视图里插入注释节点或者空白文本节点
       const placeholder = (n2.el = __DEV__
         ? createComment('teleport start')
         : createText(''))
@@ -103,6 +104,7 @@ export const TeleportImpl = {
         : createText(''))
       insert(placeholder, container, anchor)
       insert(mainAnchor, container, anchor)
+      // 获取目标移动的DOM节点
       const target = (n2.target = resolveTarget(n2.props, querySelector))
       const targetAnchor = (n2.targetAnchor = createText(''))
       if (target) {
@@ -110,6 +112,7 @@ export const TeleportImpl = {
         // #2652 we could be teleporting from a non-SVG tree into an SVG tree
         isSVG = isSVG || isTargetSVG(target)
       } else if (__DEV__ && !disabled) {
+        // 查找不到target则报警告
         warn('Invalid Teleport target on mount:', target, `(${typeof target})`)
       }
 
@@ -131,8 +134,10 @@ export const TeleportImpl = {
       }
 
       if (disabled) {
+        // disabled情况就在原先的位置挂载
         mount(container, mainAnchor)
       } else if (target) {
+        // 挂载到target的位置
         mount(target, targetAnchor)
       }
     } else {
@@ -141,11 +146,12 @@ export const TeleportImpl = {
       const mainAnchor = (n2.anchor = n1.anchor)!
       const target = (n2.target = n1.target)!
       const targetAnchor = (n2.targetAnchor = n1.targetAnchor)!
+      // 之前是不是disabled状态
       const wasDisabled = isTeleportDisabled(n1.props)
       const currentContainer = wasDisabled ? container : target
       const currentAnchor = wasDisabled ? mainAnchor : targetAnchor
       isSVG = isSVG || isTargetSVG(target)
-
+      // 更新子节点
       if (dynamicChildren) {
         // fast path when the teleport happens to be a block root
         patchBlockChildren(
@@ -179,6 +185,7 @@ export const TeleportImpl = {
         if (!wasDisabled) {
           // enabled -> disabled
           // move into main container
+          // 把子节点移动回主容器
           moveTeleport(
             n2,
             container,
@@ -195,6 +202,7 @@ export const TeleportImpl = {
             querySelector
           ))
           if (nextTarget) {
+            // 目标元素改变 移动到新的目标元素
             moveTeleport(
               n2,
               nextTarget,
@@ -212,6 +220,7 @@ export const TeleportImpl = {
         } else if (wasDisabled) {
           // disabled -> enabled
           // move into teleport target
+          // 移动到目标元素位置
           moveTeleport(
             n2,
             target,

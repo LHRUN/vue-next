@@ -19,6 +19,10 @@ export function provide<T>(key: InjectionKey<T> | string | number, value: T) {
     // parent and let the prototype chain do the work.
     const parentProvides =
       currentInstance.parent && currentInstance.parent.provides
+    /* 
+      当当前组件和父级组件的provides相同时，在当前组件实例中的provides对象和父级建立连接
+      也就是原型[[prototype]] (__proto__)
+    */
     if (parentProvides === provides) {
       provides = currentInstance.provides = Object.create(parentProvides)
     }
@@ -45,6 +49,7 @@ export function inject(
 ) {
   // fallback to `currentRenderingInstance` so that this can be called in
   // a functional component
+  // 如果是被函数式组件调用则取currentRenderingInstance
   const instance = currentInstance || currentRenderingInstance
   if (instance) {
     // #2400
@@ -58,10 +63,12 @@ export function inject(
     if (provides && (key as string | symbol) in provides) {
       // TS doesn't allow symbol as index type
       return provides[key as string]
+      // 如果参数大于1个，第二个则是默认值，第三个参数是true，并且第二个值是函数则执行函数
     } else if (arguments.length > 1) {
       return treatDefaultAsFactory && isFunction(defaultValue)
         ? defaultValue.call(instance.proxy)
         : defaultValue
+      // 没有找到警告
     } else if (__DEV__) {
       warn(`injection "${String(key)}" not found.`)
     }

@@ -100,11 +100,11 @@ export const transformElement: NodeTransform = (node, context) => {
     const isDynamicComponent =
       isObject(vnodeTag) && vnodeTag.callee === RESOLVE_DYNAMIC_COMPONENT
 
-    let vnodeProps: VNodeCall['props']
-    let vnodeChildren: VNodeCall['children']
-    let vnodePatchFlag: VNodeCall['patchFlag']
+    let vnodeProps: VNodeCall['props'] // 属性
+    let vnodeChildren: VNodeCall['children'] // 子节点
+    let vnodePatchFlag: VNodeCall['patchFlag'] // 标记更新的类型标识，用于运行时优化
     let patchFlag: number = 0
-    let vnodeDynamicProps: VNodeCall['dynamicProps']
+    let vnodeDynamicProps: VNodeCall['dynamicProps'] // 动态绑定的属性
     let dynamicPropNames: string[] | undefined
     let vnodeDirectives: VNodeCall['directives']
 
@@ -154,8 +154,10 @@ export const transformElement: NodeTransform = (node, context) => {
         // To ensure correct updates with block optimizations, we need to:
         // 1. Force keep-alive into a block. This avoids its children being
         //    collected by a parent block.
+        // 把KeepAlive看做是一个Block，这样可以避免它的子节点的动态节点呗父block收集
         shouldUseBlock = true
         // 2. Force keep-alive to always be updated, since it uses raw children.
+        // 确保它始终更新
         patchFlag |= PatchFlags.DYNAMIC_SLOTS
         if (__DEV__ && node.children.length > 1) {
           context.onError(
@@ -171,6 +173,7 @@ export const transformElement: NodeTransform = (node, context) => {
       const shouldBuildAsSlots =
         isComponent &&
         // Teleport is not a real component and has dedicated runtime handling
+        // 翻：Teleport 不是真正的组件，并且具有专门的运行时处理
         vnodeTag !== TELEPORT &&
         // explained above.
         vnodeTag !== KEEP_ALIVE

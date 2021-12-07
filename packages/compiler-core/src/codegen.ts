@@ -121,6 +121,7 @@ function createCodegenContext(
     helper(key) {
       return `_${helperNameMap[key]}`
     },
+    // context.code后追加code来更新它的值
     push(code, node) {
       context.code += code
       if (!__BROWSER__ && context.map) {
@@ -140,9 +141,18 @@ function createCodegenContext(
         }
       }
     },
+    /* 
+      增加代码的缩进，让上下文维护的代码缩进context.indentLevel加1
+      内部会执行newline方法，添加一个换行符，以及两倍indentLevel对应的空格
+    */
     indent() {
       newline(++context.indentLevel)
     },
+    /*
+      与indent相反
+      减少代码的缩进，让上下文维护的代码缩进context.indentLevel减1
+      在内部会执行newline方法去添加一个换行符，并减少两倍indentLevel对应的空格
+    */
     deindent(withoutNewLine = false) {
       if (withoutNewLine) {
         --context.indentLevel
@@ -183,12 +193,21 @@ function createCodegenContext(
   return context
 }
 
+/* 
+  generate实现分5步
+  1. 创建代码生成上下文
+  2. 生成预设代码
+  3. 生成渲染函数
+  4. 生成资源声明代码
+  5. 生成创建VNode树的表达式
+*/
 export function generate(
   ast: RootNode,
   options: CodegenOptions & {
     onContextCreated?: (context: CodegenContext) => void
   } = {}
 ): CodegenResult {
+  // 创建代码生成上下文
   const context = createCodegenContext(ast, options)
   if (options.onContextCreated) options.onContextCreated(context)
   const {
@@ -202,8 +221,8 @@ export function generate(
     ssr
   } = context
 
-  const hasHelpers = ast.helpers.length > 0
-  const useWithBlock = !prefixIdentifiers && mode !== 'module'
+  const hasHelpers = ast.helpers.length > 0 // 是否存在 helpers 辅助函数
+  const useWithBlock = !prefixIdentifiers && mode !== 'module' // 使用 with 扩展作用域
   const genScopeId = !__BROWSER__ && scopeId != null && mode === 'module'
   const isSetupInlined = !__BROWSER__ && !!options.inline
 
@@ -213,19 +232,25 @@ export function generate(
   const preambleContext = isSetupInlined
     ? createCodegenContext(ast, options)
     : context
+
+  // 不在浏览器的环境且 mode 是 module
   if (!__BROWSER__ && mode === 'module') {
+    // 使用 ES module 标准的 import 来导入 helper 的辅助函数，处理生成代码的前置部分
     genModulePreamble(ast, preambleContext, genScopeId, isSetupInlined)
   } else {
+    // 否则生成的代码前置部分是一个单一的 const { helpers... } = Vue 处理代码前置部分
     genFunctionPreamble(ast, preambleContext)
   }
 
   // enter render function
-  const functionName = ssr ? `ssrRender` : `render`
-  const args = ssr ? ['_ctx', '_push', '_parent', '_attrs'] : ['_ctx', '_cache']
+  const functionName = ssr ? `ssrRender` : `render` // 生成后的函数名
+  const args = ssr ? ['_ctx', '_push', '_parent', '_attrs'] : ['_ctx', '_cache'] // 函数的传参
   if (!__BROWSER__ && options.bindingMetadata && !options.inline) {
     // binding optimization args
     args.push('$props', '$setup', '$data', '$options')
   }
+
+  // 函数签名，是 TypeScript 的话标记为 any 类型
   const signature =
     !__BROWSER__ && options.isTS
       ? args.map(arg => `${arg}: any`).join(',')
@@ -238,6 +263,8 @@ export function generate(
     // TODO: consider removing in 3.1
     push(`const ${functionName} = ${PURE_ANNOTATION}${WITH_ID}(`)
   }
+
+  // 使用箭头函数还是函数声明来创建渲染函数
   if (isSetupInlined || genScopeId) {
     push(`(${signature}) => {`)
   } else {
@@ -245,11 +272,14 @@ export function generate(
   }
   indent()
 
+  // 使用 with 扩展作用域
   if (useWithBlock) {
     push(`with (_ctx) {`)
     indent()
     // function mode const declarations should be inside with block
     // also they should be renamed to avoid collision with user properties
+    // 在 function mode 中，const 声明应该在代码块中，
+    // 并且应该重命名解构的变量，防止变量名和用户的变量名冲突
     if (hasHelpers) {
       push(
         `const { ${ast.helpers
@@ -262,12 +292,14 @@ export function generate(
   }
 
   // generate asset resolution statements
+  // 生成自定义组件声明代码
   if (ast.components.length) {
     genAssets(ast.components, 'component', context)
     if (ast.directives.length || ast.temps > 0) {
       newline()
     }
   }
+  // 生成自定义指令声明代码
   if (ast.directives.length) {
     genAssets(ast.directives, 'directive', context)
     if (ast.temps > 0) {
@@ -279,7 +311,7 @@ export function generate(
     genAssets(ast.filters, 'filter', context)
     newline()
   }
-
+  // 生成临时变量代码
   if (ast.temps > 0) {
     push(`let `)
     for (let i = 0; i < ast.temps; i++) {

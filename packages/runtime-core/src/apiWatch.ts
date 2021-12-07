@@ -173,7 +173,11 @@ function doWatch(
   let getter: () => any
   let forceTrigger = false
   let isMultiSource = false
-
+  /* 
+    标准化source
+    如果source是ref对象，则创建一个访问source.value的getter函数
+    如果source是reactive对象，则创建一个访问source的getter函数，并设置deep为true
+  */
   if (isRef(source)) {
     getter = () => source.value
     forceTrigger = !!source._shallow
@@ -243,6 +247,7 @@ function doWatch(
   }
 
   let cleanup: () => void
+  // 注册无效回调函数
   let onInvalidate: InvalidateCbRegistrator = (fn: () => void) => {
     cleanup = runner.options.onStop = () => {
       callWithErrorHandling(fn, instance, ErrorCodes.WATCH_CLEANUP)
@@ -309,6 +314,13 @@ function doWatch(
   job.allowRecurse = !!cb
 
   let scheduler: ReactiveEffectOptions['scheduler']
+
+  /* 
+    watch的回调函数是通过一定的调度方式执行的
+    如果flush为sync，表示它是一个同步watcher，即当数据变化时同步执行回调函数
+    如果flush为post，回调函数通过queuePostRenderEffect的方式在组件更新之后执行
+    如果flush为pre，即默认时，回调函数通过queuePostRenderEffect的方式在组件更新之后执行
+  */
   if (flush === 'sync') {
     scheduler = job as any // the scheduler function gets called directly
   } else if (flush === 'post') {
@@ -333,6 +345,7 @@ function doWatch(
     scheduler
   })
 
+  // 在组件实例中记录这个effect
   recordInstanceBoundEffect(runner, instance)
 
   // initial run
@@ -348,6 +361,7 @@ function doWatch(
     runner()
   }
 
+  // 返回侦听器销毁函数
   return () => {
     stop(runner)
     if (instance) {

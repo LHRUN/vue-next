@@ -23,14 +23,14 @@ export const enum Namespaces {
 }
 
 export const enum NodeTypes {
-  ROOT,
-  ELEMENT,
-  TEXT,
-  COMMENT,
-  SIMPLE_EXPRESSION,
-  INTERPOLATION,
-  ATTRIBUTE,
-  DIRECTIVE,
+  ROOT, // 根节点0
+  ELEMENT, // 元素节点
+  TEXT, // 文本节点
+  COMMENT, // 注释节点
+  SIMPLE_EXPRESSION, // 表达式
+  INTERPOLATION, // 双花插值 {{}}
+  ATTRIBUTE, // 属性
+  DIRECTIVE, // 指令
   // containers
   COMPOUND_EXPRESSION,
   IF,

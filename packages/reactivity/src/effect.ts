@@ -121,6 +121,7 @@ function createReactiveEffect<T = any>(
         enableTracking()
         effectStack.push(effect)
         activeEffect = effect
+        debugger
         return fn()
       } finally {
         // track将依赖函数activeEffect添加到对应的dep中，然后在finally中将activeEffect重置为上一个effect的值

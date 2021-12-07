@@ -303,6 +303,9 @@ function flushJobs(seen?: CountMap) {
   }
 }
 
+/* 
+  检测循环更新
+*/
 function checkRecursiveUpdates(seen: CountMap, fn: SchedulerJob | SchedulerCb) {
   if (!seen.has(fn)) {
     seen.set(fn, 1)

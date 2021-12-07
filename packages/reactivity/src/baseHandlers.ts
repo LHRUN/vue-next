@@ -160,7 +160,6 @@ function createGetter(isReadonly = false, shallow = false) {
       // 由于proxy只能代理一层，所以target[key]的值如果是对象，则继续对其进行代理
       return isReadonly ? readonly(res) : reactive(res)
     }
-
     return res
   }
 }

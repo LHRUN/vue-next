@@ -171,12 +171,12 @@ export function createAppAPI<HostElement>(
   render: RootRenderFunction,
   hydrate?: RootHydrateFunction
 ): CreateAppFunction<HostElement> {
+  // createApp 方法接收两个参数：根组件对象和prop
   return function createApp(rootComponent, rootProps = null) {
     if (rootProps != null && !isObject(rootProps)) {
       __DEV__ && warn(`root props passed to app.mount() must be an object.`)
       rootProps = null
     }
-
     const context = createAppContext()
     const installedPlugins = new Set()
 
@@ -205,20 +205,25 @@ export function createAppAPI<HostElement>(
       },
 
       use(plugin: Plugin, ...options: any[]) {
+        // 已经有插件，并且不是生产环境 报警告
         if (installedPlugins.has(plugin)) {
           __DEV__ && warn(`Plugin has already been applied to target app.`)
+          // 插件install是函数，则添加插件，并执行install函数
         } else if (plugin && isFunction(plugin.install)) {
           installedPlugins.add(plugin)
           plugin.install(app, ...options)
+          // 插件本身是函数，则添加插件，并执行插件本身函数
         } else if (isFunction(plugin)) {
           installedPlugins.add(plugin)
           plugin(app, ...options)
+          // 如果都不是报警告
         } else if (__DEV__) {
           warn(
             `A plugin must either be a function or an object with an "install" ` +
               `function.`
           )
         }
+        // 链式调用
         return app
       },
 
@@ -254,6 +259,7 @@ export function createAppAPI<HostElement>(
 
       directive(name: string, directive?: Directive) {
         if (__DEV__) {
+          // 检测指令名是否冲突
           validateDirectiveName(name)
         }
 
@@ -273,14 +279,15 @@ export function createAppAPI<HostElement>(
         isSVG?: boolean
       ): any {
         if (!isMounted) {
+          // 创建root vnode
           const vnode = createVNode(
             rootComponent as ConcreteComponent,
             rootProps
           )
           // store app context on the root VNode.
           // this will be set on the root instance on initial mount.
+          // 缓存context，首次挂载时设置
           vnode.appContext = context
-
           // HMR root reload
           if (__DEV__) {
             context.reload = () => {
@@ -294,6 +301,7 @@ export function createAppAPI<HostElement>(
             render(vnode, rootContainer, isSVG)
           }
           isMounted = true
+          // 缓存rootContainer
           app._container = rootContainer
           // for devtools and telemetry
           ;(rootContainer as any).__vue_app__ = app

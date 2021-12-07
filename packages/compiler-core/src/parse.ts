@@ -137,8 +137,8 @@ function createParserContext(
     offset: 0, // 解析到相对于template string开始的位置
     originalSource: content, // 原始template string
     source: content, // parser处理后的最新template string
-    inPre: false,
-    inVPre: false,
+    inPre: false, // 当前代码是否在pre标签内
+    inVPre: false, // 当前代码是否在v-pre指令环境下
     onWarn: options.onWarn
   }
 }
@@ -174,6 +174,7 @@ function parseChildren(
             node = parseComment(context)
           } else if (startsWith(s, '<!DOCTYPE')) {
             // Ignore DOCTYPE by a limitation. 忽略 DOCTYPE
+            // 解析文档声明
             node = parseBogusComment(context)
           } else if (startsWith(s, '<![CDATA[')) {
             if (ns !== Namespaces.HTML) {
@@ -273,12 +274,19 @@ function parseChildren(
       const node = nodes[i]
       if (!context.inPre && node.type === NodeTypes.TEXT) {
         if (!/[^\t\r\n\f ]/.test(node.content)) {
+          // 匹配空白字符
           const prev = nodes[i - 1]
           const next = nodes[i + 1]
           // Remove if:
           // - the whitespace is the first or last node, or:
           // - (condense mode) the whitespace is adjacent to a comment, or:
           // - (condense mode) the whitespace is between two elements AND contains newline
+          /* 
+            如果空白字符是开头或者结尾节点
+            或者空白字符与注释节点相连
+            或者空白字符在两个元素之间并包含换行符
+            那么这些空白字符节点都应该被移除
+          */
           if (
             !prev ||
             !next ||
@@ -293,11 +301,13 @@ function parseChildren(
             nodes[i] = null as any
           } else {
             // Otherwise, the whitespace is condensed into a single space
+            // 否则压缩这些空白字符到一个空格
             node.content = ' '
           }
         } else if (!preserve) {
           // in condense mode, consecutive whitespaces in text are condensed
           // down to a single space.
+          // 替换内容中的空白空间到一个空格
           node.content = node.content.replace(/[\t\r\n\f ]+/g, ' ')
         }
       }
@@ -320,7 +330,7 @@ function parseChildren(
       }
     }
   }
-
+  // 过滤空白字符节点
   return removedWhitespace ? nodes.filter(Boolean) : nodes
 }
 
@@ -364,31 +374,40 @@ function parseCDATA(
   return nodes
 }
 
+/* 
+  解析注释
+*/
 function parseComment(context: ParserContext): CommentNode {
   __TEST__ && assert(startsWith(context.source, '<!--'))
 
   const start = getCursor(context)
   let content: string
 
-  // Regular comment.
+  // Regular comment. 常规注释的结束符
   const match = /--(\!)?>/.exec(context.source)
   if (!match) {
+    // 没有匹配的注释结束符
     content = context.source.slice(4)
     advanceBy(context, context.source.length)
     emitError(context, ErrorCodes.EOF_IN_COMMENT)
   } else {
     if (match.index <= 3) {
+      // 非法的注释符号
       emitError(context, ErrorCodes.ABRUPT_CLOSING_OF_EMPTY_COMMENT)
     }
     if (match[1]) {
+      // 注释结束符不正确
       emitError(context, ErrorCodes.INCORRECTLY_CLOSED_COMMENT)
     }
+    // 获取注释的内容
     content = context.source.slice(4, match.index)
 
     // Advancing with reporting nested comments.
+    // 截取到注释结尾之间的代码，用于后续判断嵌套注释
     const s = context.source.slice(0, match.index)
     let prevIndex = 1,
       nestedIndex = 0
+    // 判断嵌套注释符的情况，存在即报错
     while ((nestedIndex = s.indexOf('<!--', prevIndex)) !== -1) {
       advanceBy(context, nestedIndex - prevIndex + 1)
       if (nestedIndex + 4 < s.length) {
@@ -396,6 +415,7 @@ function parseComment(context: ParserContext): CommentNode {
       }
       prevIndex = nestedIndex + 1
     }
+    // 前进代码到注释结束符后
     advanceBy(context, match.index + match[0].length - prevIndex + 1)
   }
 
@@ -406,6 +426,9 @@ function parseComment(context: ParserContext): CommentNode {
   }
 }
 
+/* 
+  解析文档声明
+*/
 function parseBogusComment(context: ParserContext): CommentNode | undefined {
   __TEST__ && assert(/^<(?:[\!\?]|\/[^a-z>])/i.test(context.source))
 
@@ -439,13 +462,18 @@ function parseElement(
   __TEST__ && assert(/^<[a-z]/i.test(context.source))
 
   // Start tag.
+  // 是否在pre标签内
   const wasInPre = context.inPre
+  // 是否在v-pre指令内
   const wasInVPre = context.inVPre
-  const parent = last(ancestors) // 父节点
+  // 获取当前元素的父标签节点
+  const parent = last(ancestors)
 
-  // 解析开始标签生成AST节点
+  // 解析开始标签，生成一个标签节点，并前进代码到开始标签后
   const element = parseTag(context, TagType.Start, parent)
+  // 是否在pre标签的边界
   const isPreBoundary = context.inPre && !wasInPre
+  // 是否在v-pre指令的边界
   const isVPreBoundary = context.inVPre && !wasInVPre
 
   // 如果是自闭合节点或者空标签，直接返回解析出的AST节点
@@ -492,6 +520,7 @@ function parseElement(
 
   // End tag.
   if (startsWithEndTagOpen(context.source, element.tag)) {
+    // 解析结束标签，并前进代码到结束标签后
     parseTag(context, TagType.End, parent)
   } else {
     emitError(context, ErrorCodes.X_MISSING_END_TAG, 0, element.loc.start)
@@ -502,7 +531,7 @@ function parseElement(
       }
     }
   }
-
+  // 更新标签节点的代码位置，结束位置到结束标签后
   element.loc = getSelection(context, element.loc.start)
 
   if (isPreBoundary) {
@@ -553,8 +582,9 @@ function parseTag(
   const tag = match[1] // 获取节点的标签名
   const ns = context.options.getNamespace(tag, parent)
 
-  // 解析完开始标签，推进模板字符串，位数为整个开始标签的长度
+  // 前进代码到标签文本结束位置
   advanceBy(context, match[0].length)
+  // 前进代码到标签文本后面的空白字符后
   advanceSpaces(context)
 
   // save current state in case we need to re-parse attributes with v-pre
@@ -562,7 +592,7 @@ function parseTag(
   const cursor = getCursor(context)
   const currentSource = context.source
 
-  // check <pre> tag
+  // check <pre> tag 检查是不是一个pre标签
   const isPreTag = context.options.isPreTag(tag)
   if (isPreTag) {
     context.inPre = true
@@ -571,7 +601,7 @@ function parseTag(
   // Attributes. 解析属性props
   let props = parseAttributes(context, type)
 
-  // check v-pre
+  // check v-pre 检查属性中有没有v-pre指令
   if (
     type === TagType.Start &&
     !context.inVPre &&
@@ -582,6 +612,7 @@ function parseTag(
     extend(context, cursor)
     context.source = currentSource
     // re-parse attrs and filter out v-pre itself
+    // 重新解析属性，并把v-pre过滤
     props = parseAttributes(context, type).filter(p => p.name !== 'v-pre')
   }
 
@@ -970,10 +1001,14 @@ function parseAttributeValue(context: ParserContext): AttributeValue {
   return { content, isQuoted, loc: getSelection(context, start) }
 }
 
+/* 
+  解析双花插值表达式
+*/
 function parseInterpolation(
   context: ParserContext,
   mode: TextModes
 ): InterpolationNode | undefined {
+  // 从配置中获取插值开始和结束分隔符，默认是 {{ 和 }}
   const [open, close] = context.options.delimiters
   __TEST__ && assert(startsWith(context.source, open))
 
@@ -984,20 +1019,31 @@ function parseInterpolation(
   }
 
   const start = getCursor(context)
+  // 代码前进到插值开始分隔符后
   advanceBy(context, open.length)
+  // 内部插值开始位置
   const innerStart = getCursor(context)
+  // 内部插值结束位置
   const innerEnd = getCursor(context)
+  // 插值原始内容的长度
   const rawContentLength = closeIndex - open.length
+  // 插值原始内容
   const rawContent = context.source.slice(0, rawContentLength)
+  // 获取插值的内容，并前进代码到插值的内容后
   const preTrimContent = parseTextData(context, rawContentLength, mode)
   const content = preTrimContent.trim()
+  // 内容相对插值开始分隔符的头偏移
   const startOffset = preTrimContent.indexOf(content)
   if (startOffset > 0) {
+    // 更新内部插值开始位置
     advancePositionWithMutation(innerStart, rawContent, startOffset)
   }
+  // 内容相对于插值结束分隔符的尾偏移
   const endOffset =
     rawContentLength - (preTrimContent.length - content.length - startOffset)
+  // 更新内部插值结束位置
   advancePositionWithMutation(innerEnd, rawContent, endOffset)
+  // 前进代码到插值结束分隔符后
   advanceBy(context, close.length)
 
   return {
@@ -1014,15 +1060,19 @@ function parseInterpolation(
   }
 }
 
+/* 
+  普通文本的解析
+*/
 function parseText(context: ParserContext, mode: TextModes): TextNode {
   __TEST__ && assert(context.source.length > 0)
-
+  // 文本结束符
   const endTokens = ['<', context.options.delimiters[0]]
   if (mode === TextModes.CDATA) {
     endTokens.push(']]>')
   }
 
   let endIndex = context.source.length
+  // 遍历文本结束符 匹配找到结束的位置
   for (let i = 0; i < endTokens.length; i++) {
     const index = context.source.indexOf(endTokens[i], 1)
     if (index !== -1 && endIndex > index) {
@@ -1033,6 +1083,7 @@ function parseText(context: ParserContext, mode: TextModes): TextNode {
   __TEST__ && assert(endIndex > 0)
 
   const start = getCursor(context)
+  // 获取文本的内容，并前进代码到文本的内容后
   const content = parseTextData(context, endIndex, mode)
 
   return {
@@ -1097,6 +1148,8 @@ function startsWith(source: string, searchString: string): boolean {
 /* 
   parser推进template string后，裁切template string为推进后的位置至尾部之间的内容
   将其作为最新template string
+  @param context 字符串上下文对象
+  @param numberOfCharacters 截断的字符数
 */
 function advanceBy(context: ParserContext, numberOfCharacters: number): void {
   const { source } = context
